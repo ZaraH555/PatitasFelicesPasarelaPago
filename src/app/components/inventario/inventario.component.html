@@ -1,0 +1,61 @@
+<div class="inventario-container">
+  <h2>Gestión de Inventario</h2>
+
+  <!-- Formulario para agregar nuevo producto -->
+  <div class="formulario-nuevo">
+    <h3>Agregar Nuevo Producto</h3>
+    <input [(ngModel)]="nuevoProducto.nombre" placeholder="Nombre" required>
+    <input [(ngModel)]="nuevoProducto.precio" type="number" placeholder="Precio" required>
+    <input [(ngModel)]="nuevoProducto.imagen" placeholder="URL de la imagen" required>
+    <input [(ngModel)]="nuevoProducto.cantidad" type="number" placeholder="Cantidad" required>
+    <button (click)="agregarProducto()">Agregar Producto</button>
+  </div>
+
+  <!-- Tabla de productos -->
+  <table class="inventario-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Precio</th>
+        <th>Cantidad</th>
+        <th>Imagen</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let producto of productos">
+        
+        <ng-container *ngIf="productoSeleccionado?.id !== producto.id">
+          <td>{{producto.id}}</td>
+          <td>{{producto.nombre}}</td>
+          <td>${{producto.precio}}</td>
+          <td>{{producto.cantidad}}</td>
+          <td>{{producto.imagen}}</td>
+          <td>
+            <button (click)="editarProducto(producto)">Editar</button>
+            <button (click)="producto.id && eliminarProducto(producto.id)" 
+                    [disabled]="!producto?.id">Eliminar</button>
+          </td>
+        </ng-container>
+        
+        <ng-container *ngIf="productoSeleccionado?.id === producto.id">
+          <td>{{producto.id}}</td>
+          <td><input [(ngModel)]="productoSeleccionado!.nombre"></td>
+          <td><input type="number" [(ngModel)]="productoSeleccionado!.precio"></td>
+          <td><input type="number" [(ngModel)]="productoSeleccionado!.cantidad"></td>
+          <td><input [(ngModel)]="productoSeleccionado!.imagen"></td>
+          <td>
+            <button (click)="guardarCambios()">Guardar</button>
+            <button (click)="cancelarEdicion()">Cancelar</button>
+          </td>
+        </ng-container>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="button-container">
+    <button (click)="descargarXML()" class="descargar-btn">Descargar XML</button>
+    <button (click)="volverAProductos()" class="back-btn">Volver a Productos</button>
+  </div>
+</div>

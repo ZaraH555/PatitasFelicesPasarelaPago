@@ -1,0 +1,13 @@
+<h2>Catálogo de Productos</h2>
+<div class="productos">
+    <div *ngFor="let producto of productos" class="producto">
+        <img [src]="producto.imagen" alt="{{producto.nombre}}">
+        <h3>{{producto.nombre}}</h3>
+        <p>Precio: ${{producto.precio}}</p>
+        <p>Disponibles: {{producto.cantidad}}</p>
+        <button (click)="agregarAlCarrito(producto)">Agregar al Carrito</button>
+    </div>
+</div>
+<br>
+<button (click)="irAlCarrito()">Ir al Carrito</button>
+<button (click)="irAlInventario()">Inventario</button>
