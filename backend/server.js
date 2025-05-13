@@ -10,7 +10,11 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:4200',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Update base path for uploads
@@ -43,7 +47,11 @@ const upload = multer({
 });
 
 // Update static file serving
-app.use('/uploads', express.static(UPLOADS_BASE_PATH));
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Content-Type', 'image/*');
+  next();
+}, express.static(UPLOADS_BASE_PATH));
 
 // Database connection
 const connection = mysql.createConnection({
@@ -66,45 +74,98 @@ connection.connect(error => {
 });
 
 function initializeDatabase() {
-  // Ensure the mascotas table is properly set up
-  connection.query(`
-    ALTER TABLE mascotas 
-    MODIFY COLUMN tamaño VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
-    MODIFY COLUMN imagen_url VARCHAR(255) DEFAULT NULL
-  `, (error) => {
+  // First create database if it doesn't exist
+  connection.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci`, (error) => {
     if (error) {
-      console.error('Error updating mascotas table:', error);
-    } else {
-      console.log('Mascotas table updated successfully');
+      console.error('Error creating database:', error);
+      return;
     }
-  });
 
-  // Ensure test services exist
-  connection.query('SELECT COUNT(*) as count FROM servicios', (error, results) => {
-    if (error || results[0].count === 0) {
-      const testServices = [
-        {
-          nombre: 'Paseo Básico',
-          duracion: 30,
-          precio: 150.00,
-          descripcion: 'Paseo de 30 minutos'
-        },
-        {
-          nombre: 'Paseo Estándar',
-          duracion: 60,
-          precio: 250.00,
-          descripcion: 'Paseo de 1 hora'
+    // Select the database
+    connection.query(`USE ${process.env.DB_NAME}`, (error) => {
+      if (error) {
+        console.error('Error selecting database:', error);
+        return;
+      }
+
+      // Create mascotas table if not exists
+      connection.query(`
+        CREATE TABLE IF NOT EXISTS mascotas (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          nombre VARCHAR(100) NOT NULL,
+          raza VARCHAR(100),
+          tamaño VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+          edad INT,
+          notas TEXT,
+          usuario_id INT,
+          imagen_url VARCHAR(255) DEFAULT NULL
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci
+      `, (error) => {
+        if (error) {
+          console.error('Error creating mascotas table:', error);
+          return;
         }
-      ];
-      
-      testServices.forEach(service => {
-        connection.query('INSERT INTO servicios SET ?', service, (err) => {
-          if (err) {
-            console.error('Error adding test service:', err);
+
+        // Create servicios table if not exists
+        connection.query(`
+          CREATE TABLE IF NOT EXISTS servicios (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            nombre VARCHAR(100) NOT NULL,
+            duracion INT,
+            precio DECIMAL(10,2),
+            descripcion TEXT
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci
+        `, (error) => {
+          if (error) {
+            console.error('Error creating servicios table:', error);
+            return;
           }
+
+          // Create paseos table if not exists
+          connection.query(`
+            CREATE TABLE IF NOT EXISTS paseos (
+              id INT AUTO_INCREMENT PRIMARY KEY,
+              usuario_id INT,
+              mascota_id INT,
+              paseador_id INT,
+              servicio_id INT,
+              fecha DATETIME,
+              estado VARCHAR(50),
+              comprobante_xml TEXT
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci
+          `, (error) => {
+            if (error) {
+              console.error('Error creating paseos table:', error);
+              return;
+            }
+
+            // Add test services if none exist
+            connection.query('SELECT COUNT(*) as count FROM servicios', (error, results) => {
+              if (!error && results[0].count === 0) {
+                const testServices = [
+                  {
+                    nombre: 'Paseo Básico',
+                    duracion: 30,
+                    precio: 150.00,
+                    descripcion: 'Paseo de 30 minutos'
+                  },
+                  {
+                    nombre: 'Paseo Estándar',
+                    duracion: 60,
+                    precio: 250.00,
+                    descripcion: 'Paseo de 1 hora'
+                  }
+                ];
+                
+                testServices.forEach(service => {
+                  connection.query('INSERT INTO servicios SET ?', service);
+                });
+              }
+            });
+          });
         });
       });
-    }
+    });
   });
 }
 
@@ -189,7 +250,7 @@ app.post('/api/mascotas', upload.single('imagen'), async (req, res) => {
   }
 });
 
-// Add PUT endpoint for updating mascotas
+// Update the PUT endpoint
 app.put('/api/mascotas/:id', upload.single('imagen'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -197,7 +258,8 @@ app.put('/api/mascotas/:id', upload.single('imagen'), async (req, res) => {
     let imagen_url = null;
 
     if (req.file) {
-      imagen_url = `http://localhost:3000/uploads/mascotas/${req.file.filename}`;
+      // Store only the relative path
+      imagen_url = `/uploads/mascotas/${req.file.filename}`;
     }
 
     const query = `
@@ -222,7 +284,13 @@ app.put('/api/mascotas/:id', upload.single('imagen'), async (req, res) => {
       [id]
     );
 
-    res.json(updatedMascota[0]);
+    // Add full URL for the response
+    const mascotaWithFullUrl = {
+      ...updatedMascota[0],
+      imagen_url: imagen_url ? `http://localhost:3000${imagen_url}` : null
+    };
+
+    res.json(mascotaWithFullUrl);
   } catch (error) {
     console.error('Error updating mascota:', error);
     res.status(500).json({ error: 'Database error', details: error.message });
@@ -348,6 +416,7 @@ function generateInvoiceXML(data) {
   const monto = Number(data.monto);
   const iva = monto * 0.16;
   const total = monto + iva;
+  const uuid = 'a1b2c3d4-' + Math.random().toString(36).substring(2, 15);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante
@@ -365,23 +434,26 @@ function generateInvoiceXML(data) {
   TipoDeComprobante="I"
   MetodoPago="PUE"
   LugarExpedicion="44100">
+ 
   <cfdi:Emisor
     Rfc="PPE250101XX1"
     Nombre="Patitas Felices"
     RegimenFiscal="601"/>
+ 
   <cfdi:Receptor
     Rfc="XAXX010101000"
     Nombre="Cliente General"
     DomicilioFiscalReceptor="44100"
     RegimenFiscalReceptor="616"
     UsoCFDI="G03"/>
+ 
   <cfdi:Conceptos>
     <cfdi:Concepto
       ClaveProdServ="90111501"
       Cantidad="1"
       ClaveUnidad="E48"
       Unidad="Servicio"
-      Descripcion="Servicio de paseo de perro - ${data.servicio_nombre} - Duración: ${data.duracion} minutos"
+      Descripcion="Servicio de paseo de perro - ${data.servicio_nombre} - Duración: ${data.duracion} minutos - Fecha: ${data.fecha.split('T')[0]}"
       ValorUnitario="${monto.toFixed(2)}"
       Importe="${monto.toFixed(2)}"
       ObjetoImp="02">
@@ -397,6 +469,7 @@ function generateInvoiceXML(data) {
       </cfdi:Impuestos>
     </cfdi:Concepto>
   </cfdi:Conceptos>
+ 
   <cfdi:Impuestos TotalImpuestosTrasladados="${iva.toFixed(2)}">
     <cfdi:Traslados>
       <cfdi:Traslado
@@ -407,6 +480,18 @@ function generateInvoiceXML(data) {
         Importe="${iva.toFixed(2)}"/>
     </cfdi:Traslados>
   </cfdi:Impuestos>
+ 
+  <cfdi:Complemento>
+    <tfd:TimbreFiscalDigital
+      xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital"
+      xsi:schemaLocation="http://www.sat.gob.mx/TimbreFiscalDigital http://www.sat.gob.mx/sitio_internet/cfd/TimbreFiscalDigital/TimbreFiscalDigitalv11.xsd"
+      Version="1.1"
+      UUID="${uuid}"
+      FechaTimbrado="${new Date().toISOString()}"
+      SelloCFD="XXX"
+      NoCertificadoSAT="00001000000504465028"
+      SelloSAT="XXX"/>
+  </cfdi:Complemento>
 </cfdi:Comprobante>`;
 }
 
@@ -506,7 +591,7 @@ app.get('/api/facturas', (req, res) => {
       p.estado,
       p.comprobante_xml
     FROM paseos p
-    JOIN servicios s ON p.id = s.id
+    JOIN servicios s ON p.servicio_id = s.id
     JOIN mascotas m ON p.mascota_id = m.id
     WHERE p.estado = 'completado'
     ORDER BY p.fecha DESC

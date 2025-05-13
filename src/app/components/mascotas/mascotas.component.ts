@@ -19,7 +19,8 @@ import { Mascota, MascotaFormData } from '../../models/mascota';
       
       <div class="mascota-cards">
         <div *ngFor="let mascota of mascotas" class="mascota-card">
-          <div class="mascota-img" [style.backgroundImage]="'url(' + mascota.imagen_url + ')'">
+          <div class="mascota-img" 
+               [style.backgroundImage]="'url(' + getMascotaImage(mascota) + ')'">
           </div>
           <div class="mascota-info">
             <h4>{{mascota.nombre}}</h4>
@@ -195,9 +196,10 @@ export class MascotasComponent implements OnInit {
   }
 
   getMascotaImage(mascota: Mascota): string {
-    return mascota.imagen_url ? 
-      `url("${mascota.imagen_url}")` : 
-      'url("/assets/default-pet.jpg")';
+    if (mascota.imagen_url) {
+      return mascota.imagen_url;
+    }
+    return '/assets/default-pet.jpg';
   }
 
   eliminarMascota(mascota: Mascota) {

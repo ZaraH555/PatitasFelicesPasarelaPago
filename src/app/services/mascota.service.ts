@@ -26,11 +26,8 @@ export class MascotaService {
         ...mascota,
         id: mascota.id,
         tamano: mascota.tamaño || mascota.tamano || 'mediano',
-        imagen_url: mascota.imagen ? 
-          mascota.imagen.startsWith('http') ? 
-            mascota.imagen : 
-            `${this.apiUrl}${mascota.imagen}` : 
-          undefined
+        imagen_url: mascota.imagen_url || 
+          (mascota.imagen ? `${this.apiUrl}/uploads/mascotas/${mascota.imagen}` : '/assets/default-pet.jpg')
       } as Mascota)))
     ).subscribe({
       next: (mascotas) => {
